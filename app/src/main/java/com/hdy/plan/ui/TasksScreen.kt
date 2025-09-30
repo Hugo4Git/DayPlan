@@ -26,40 +26,30 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
-fun TasksScreen() {
-    data class BoxItem(
-        val text: MutableState<TextFieldValue>,
-        val time: MutableState<LocalTime> = mutableStateOf(LocalTime.now())
-    )
-
-    val items = remember { mutableStateListOf<BoxItem>() }
-
-    fun addItem() {
-        items += BoxItem(mutableStateOf(TextFieldValue("")))
-    }
-
-    fun removeItem(index: Int) {
-        items.removeAt(index)
-    }
+fun TasksScreen(
+    vm: TasksViewModel = viewModel(factory = TasksViewModel.Companion.factory())
+) {
+    val list by vm.items.collectAsStateWithLifecycle()
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = { addItem() }, containerColor = MaterialTheme.colorScheme.secondary) {
+            FloatingActionButton(onClick = { vm.add() }, containerColor = MaterialTheme.colorScheme.secondary) {
                 Icon(Icons.Default.Add, contentDescription = "Add")
             }
         }
@@ -77,7 +67,7 @@ fun TasksScreen() {
                 verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (items.isEmpty()) {
+                if (list.isEmpty()) {
                     Text(
                         text = "Tap + to add a note",
                         style = MaterialTheme.typography.titleMedium,
@@ -85,66 +75,85 @@ fun TasksScreen() {
                         modifier = Modifier.padding(8.dp)
                     )
                 } else {
-                    items.forEachIndexed { index, item ->
-                        Card(
-                            modifier = Modifier
-                                .widthIn(max = 520.dp)
-                                .fillMaxWidth()
-                                .shadow(8.dp, shape = MaterialTheme.shapes.medium),
-                            shape = MaterialTheme.shapes.medium,
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface,
-                            )
-                        ) {
-                            Box(modifier = Modifier.fillMaxWidth()) {
-
-                                AssistChip(
-                                    onClick = {
-                                        item.time.value = LocalTime.now()
-                                        // TODO: Open your time picker and set item.time.value accordingly
-                                    },
-                                    label = {
-                                        Text(
-                                            text = item.time.value.format(DateTimeFormatter.ofPattern("HH:mm")),
-                                            fontSize = 20.sp,
-                                        )
-                                    },
-                                    border = null,
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(start = 8.dp, top = 2.dp)
+                    list.forEach { item ->
+                            Card(
+                                modifier = Modifier
+                                    .widthIn(max = 520.dp)
+                                    .fillMaxWidth()
+                                    .shadow(8.dp, shape = MaterialTheme.shapes.medium),
+                                shape = MaterialTheme.shapes.medium,
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface,
                                 )
+                            ) {
+                                Box(modifier = Modifier.fillMaxWidth()) {
 
-                                TextField(
-                                    value = item.text.value,
-                                    onValueChange = { item.text.value = it },
-                                    placeholder = { Text("Write something…", color = MaterialTheme.colorScheme.onSurface) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 12.dp, end = 12.dp, top = 48.dp, bottom = 12.dp),
-                                    shape = MaterialTheme.shapes.small,
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                        focusedIndicatorColor = Color.Transparent,
-                                        unfocusedIndicatorColor = Color.Transparent,
-                                        disabledIndicatorColor = Color.Transparent
-                                    ),
-                                )
-
-                                IconButton(
-                                    onClick = { removeItem(index) },
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(2.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete"
+                                    AssistChip(
+                                        onClick = {
+                                            val newTime = LocalTime.now()
+                                            vm.updateTime(item.id, newTime)
+                                            // TODO: Open your time picker and set newTime accordingly
+                                        },
+                                        label = {
+                                            Text(
+                                                text = item.time.format(
+                                                    DateTimeFormatter.ofPattern(
+                                                        "HH:mm"
+                                                    )
+                                                ),
+                                                fontSize = 20.sp,
+                                            )
+                                        },
+                                        border = null,
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(start = 8.dp, top = 2.dp)
                                     )
+
+                                    var localText by rememberSaveable(item.id) { mutableStateOf(item.text) }
+                                    LaunchedEffect(item.text) {
+                                        localText = item.text
+                                    }
+                                    TextField(
+                                        value = localText,
+                                        onValueChange = { localText = it; vm.onEdit(item.id, it) },
+                                        placeholder = {
+                                            Text(
+                                                "Write something…",
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                start = 12.dp,
+                                                end = 12.dp,
+                                                top = 48.dp,
+                                                bottom = 12.dp
+                                            ),
+                                        shape = MaterialTheme.shapes.small,
+                                        colors = TextFieldDefaults.colors(
+                                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                                            focusedIndicatorColor = Color.Transparent,
+                                            unfocusedIndicatorColor = Color.Transparent,
+                                            disabledIndicatorColor = Color.Transparent
+                                        ),
+                                    )
+
+                                    IconButton(
+                                        onClick = { vm.remove(item.id) },
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(2.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete"
+                                        )
+                                    }
                                 }
                             }
-                        }
                     }
                     Spacer(Modifier.height(56.dp))
                 }
