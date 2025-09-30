@@ -1,19 +1,21 @@
 package com.hdy.plan.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.hdy.plan.domain.Task
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -46,8 +48,19 @@ fun TasksScreen(
     vm: TasksViewModel = viewModel(factory = TasksViewModel.Companion.factory())
 ) {
     val list by vm.items.collectAsStateWithLifecycle()
+    val enabledReminders by vm.enabledReminders.collectAsStateWithLifecycle()
     var pickerForId by remember { mutableStateOf<Long?>(null) }
     var initialTime by remember { mutableStateOf(LocalTime.now()) }
+    val context = LocalContext.current
+    var pendingToggle by remember { mutableStateOf<Task?>(null) }
+    val requestNotifPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        pendingToggle?.let { task ->
+            if (granted) vm.toggleReminder(task)
+            pendingToggle = null
+        }
+    }
 
     Scaffold(
         floatingActionButton = {
@@ -90,26 +103,53 @@ fun TasksScreen(
                             ) {
                                 Box(modifier = Modifier.fillMaxWidth()) {
 
-                                    AssistChip(
-                                        onClick = {
-                                            pickerForId = item.id
-                                            initialTime = item.time
-                                        },
-                                        label = {
-                                            Text(
-                                                text = item.time.format(
-                                                    DateTimeFormatter.ofPattern(
-                                                        "HH:mm"
-                                                    )
-                                                ),
-                                                fontSize = 20.sp,
-                                            )
-                                        },
-                                        border = null,
+                                    Row(
                                         modifier = Modifier
                                             .align(Alignment.TopStart)
-                                            .padding(start = 8.dp, top = 2.dp)
-                                    )
+                                            .padding(start = 8.dp, top = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        AssistChip(
+                                            onClick = {
+                                                pickerForId = item.id
+                                                initialTime = item.time
+                                            },
+                                            label = {
+                                                Text(
+                                                    text = item.time.format(
+                                                        DateTimeFormatter.ofPattern("HH:mm")
+                                                    ),
+                                                    fontSize = 20.sp,
+                                                )
+                                            },
+                                            border = null,
+                                        )
+                                        IconButton(
+                                            onClick = {
+                                                if (Build.VERSION.SDK_INT >= 33) {
+                                                    val granted = ContextCompat.checkSelfPermission(
+                                                        context, Manifest.permission.POST_NOTIFICATIONS
+                                                    ) == PackageManager.PERMISSION_GRANTED
+                                                    if (!granted) {
+                                                        pendingToggle = item
+                                                        requestNotifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                                    } else {
+                                                        vm.toggleReminder(item)
+                                                    }
+                                                } else {
+                                                    vm.toggleReminder(item)
+                                                }
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = if (enabledReminders.contains(item.id))
+                                                    Icons.Filled.Notifications
+                                                else
+                                                    Icons.Outlined.Notifications,
+                                                contentDescription = "Toggle reminder"
+                                            )
+                                        }
+                                    }
 
                                     var localText by rememberSaveable(item.id) { mutableStateOf(item.text) }
                                     LaunchedEffect(item.text) {

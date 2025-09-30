@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.androidx.room.ktx.v261)
     ksp(libs.androidx.room.compiler.v261)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.work.runtime.ktx)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

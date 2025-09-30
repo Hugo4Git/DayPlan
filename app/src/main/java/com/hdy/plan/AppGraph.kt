@@ -7,7 +7,8 @@ import com.hdy.plan.data.TasksRepositoryImpl
 import com.hdy.plan.domain.TasksRepository
 
 object AppGraph {
-    private lateinit var appContext: Context
+    lateinit var appContext: Context
+        private set
     private val db: AppDb by lazy {
         Room.databaseBuilder(appContext, AppDb::class.java, "app.db").build()
     }
