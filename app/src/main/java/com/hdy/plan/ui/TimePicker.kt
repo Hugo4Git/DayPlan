@@ -32,8 +32,6 @@ import androidx.compose.ui.unit.IntSize
 import kotlin.math.min
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.outlined.Notifications
 
 @Composable
 fun TimePicker(

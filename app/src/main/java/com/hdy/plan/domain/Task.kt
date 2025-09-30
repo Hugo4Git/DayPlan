@@ -11,7 +11,7 @@ data class Task(
 
 interface TasksRepository {
     fun observe(): Flow<List<Task>>
-    suspend fun add(emptyText: String = "", time: LocalTime = LocalTime.now())
+    suspend fun add(emptyText: String = "", time: LocalTime = LocalTime.MIDNIGHT)
     suspend fun remove(id: Long)
     suspend fun updateText(id: Long, text: String)
     suspend fun updateTime(id: Long, time: LocalTime)

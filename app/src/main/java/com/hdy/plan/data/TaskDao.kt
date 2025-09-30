@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TaskDao {
-    @Query("SELECT * FROM tasks ORDER BY timeMinutes, id")
+    @Query("SELECT * FROM tasks ORDER BY id, timeMinutes")
     fun observeAll(): Flow<List<TaskEntity>>
 
     @Insert

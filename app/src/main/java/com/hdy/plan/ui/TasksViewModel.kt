@@ -13,6 +13,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class TasksViewModel(
     private val repo: TasksRepository
@@ -21,6 +25,15 @@ class TasksViewModel(
 
     val items: StateFlow<List<Task>> =
         repo.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        // updating UI bell state
+        viewModelScope.launch {
+            items.collect { current ->
+                refreshEnabledFromWorkManager(current.map { it.id })
+            }
+        }
+    }
 
     fun add() = viewModelScope.launch { repo.add() }
     fun remove(id: Long) = viewModelScope.launch {
@@ -87,6 +100,20 @@ class TasksViewModel(
         androidx.work.WorkManager.getInstance(AppGraph.appContext)
             .cancelUniqueWork(uniqueWorkName(id))
         _enabledReminders.value = _enabledReminders.value - id
+    }
+
+    private suspend fun refreshEnabledFromWorkManager(ids: List<Long>) {
+        val wm = WorkManager.getInstance(AppGraph.appContext)
+        val enabled = mutableSetOf<Long>()
+        withContext(Dispatchers.IO) {
+            for (id in ids) {
+                val infos = wm.getWorkInfosForUniqueWork(uniqueWorkName(id)).get() // blocking, but on IO
+                if (infos.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }) {
+                    enabled += id
+                }
+            }
+        }
+        _enabledReminders.value = enabled
     }
 
     private fun uniqueWorkName(id: Long) = "task_reminder_$id"
@@ -173,4 +200,6 @@ class TasksViewModel(
         }
     }
 }
+
+
 

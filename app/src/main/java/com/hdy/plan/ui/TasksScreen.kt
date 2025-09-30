@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -62,11 +64,17 @@ fun TasksScreen(
         }
     }
 
+    val haptics = LocalHapticFeedback.current
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = { vm.add() }, containerColor = MaterialTheme.colorScheme.secondary) {
-                Icon(Icons.Default.Add, contentDescription = "Add")
-            }
+            FloatingActionButton(
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    vm.add()
+                },
+                containerColor = MaterialTheme.colorScheme.secondary) {
+                    Icon(Icons.Default.Add, contentDescription = "Add")
+                }
         }
     ) { padding ->
         Box(
@@ -102,7 +110,6 @@ fun TasksScreen(
                                 )
                             ) {
                                 Box(modifier = Modifier.fillMaxWidth()) {
-
                                     Row(
                                         modifier = Modifier
                                             .align(Alignment.TopStart)
@@ -111,6 +118,7 @@ fun TasksScreen(
                                     ) {
                                         AssistChip(
                                             onClick = {
+                                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                 pickerForId = item.id
                                                 initialTime = item.time
                                             },
@@ -126,6 +134,7 @@ fun TasksScreen(
                                         )
                                         IconButton(
                                             onClick = {
+                                                haptics.performHapticFeedback(HapticFeedbackType.ToggleOn)
                                                 if (Build.VERSION.SDK_INT >= 33) {
                                                     val granted = ContextCompat.checkSelfPermission(
                                                         context, Manifest.permission.POST_NOTIFICATIONS
@@ -183,7 +192,10 @@ fun TasksScreen(
                                     )
 
                                     IconButton(
-                                        onClick = { vm.remove(item.id) },
+                                        onClick = {
+                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            vm.remove(item.id)
+                                        },
                                         modifier = Modifier
                                             .align(Alignment.TopEnd)
                                             .padding(2.dp)
