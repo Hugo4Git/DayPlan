@@ -47,7 +47,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun TasksScreen(
-    vm: TasksViewModel = viewModel(factory = TasksViewModel.Companion.factory())
+    vm: TasksViewModel = viewModel(factory = TasksViewModel.Companion.factory()),
+    onFabLongClick: () -> Unit = {}
 ) {
     val list by vm.items.collectAsStateWithLifecycle()
     val enabledReminders by vm.enabledReminders.collectAsStateWithLifecycle()
@@ -67,14 +68,13 @@ fun TasksScreen(
     val haptics = LocalHapticFeedback.current
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
+            FabWithLongClick(
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     vm.add()
                 },
-                containerColor = MaterialTheme.colorScheme.secondary) {
-                    Icon(Icons.Default.Add, contentDescription = "Add")
-                }
+                onLongClick = onFabLongClick
+            )
         }
     ) { padding ->
         Box(

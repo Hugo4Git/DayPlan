@@ -10,6 +10,8 @@ import androidx.compose.ui.*
 import com.hdy.plan.ui.TasksScreen
 import com.hdy.plan.ui.theme.PlanTheme
 import com.hdy.plan.ui.theme.ThemeFamily
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,8 +19,9 @@ class MainActivity : ComponentActivity() {
         AppGraph.init(applicationContext)
         enableEdgeToEdge()
         setContent {
+            var theme by rememberSaveable { mutableStateOf(ThemeFamily.NATURE_CALM) }
             PlanTheme(
-                theme = ThemeFamily.NATURE_CALM,
+                theme = theme,
                 useDynamicColor = false,
                 darkTheme = null
             ) {
@@ -26,7 +29,12 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    TasksScreen()
+                    TasksScreen(
+                        onFabLongClick = {
+                            val all = ThemeFamily.entries.toTypedArray()
+                            theme = all[(theme.ordinal + 1) % all.size]
+                        }
+                    )
                 }
             }
         }
