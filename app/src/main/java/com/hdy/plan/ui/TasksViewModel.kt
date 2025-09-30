@@ -7,16 +7,19 @@ import com.hdy.plan.AppGraph
 import com.hdy.plan.domain.Task
 import com.hdy.plan.domain.TasksRepository
 import java.time.LocalTime
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import androidx.work.WorkInfo
-import androidx.work.WorkManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.util.Log
 
 class TasksViewModel(
     private val repo: TasksRepository
@@ -26,11 +29,17 @@ class TasksViewModel(
     val items: StateFlow<List<Task>> =
         repo.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    private val _enabledReminders: MutableStateFlow<Set<Long>> = MutableStateFlow(emptySet())
+    val enabledReminders: StateFlow<Set<Long>> = _enabledReminders
+
     init {
         // updating UI bell state
         viewModelScope.launch {
             items.collect { current ->
-                refreshEnabledFromWorkManager(current.map { it.id })
+                runCatching { refreshEnabledFromAlarms(current.map { it.id }) }
+                    .onFailure { e ->
+                        Log.e("TasksViewModel", "Failed refreshing alarms", e)
+                    }
             }
         }
     }
@@ -55,10 +64,6 @@ class TasksViewModel(
         }
     }
 
-    // --- Reminders state (UI) ---
-    private val _enabledReminders = kotlinx.coroutines.flow.MutableStateFlow<Set<Long>>(emptySet())
-    val enabledReminders: StateFlow<Set<Long>> = _enabledReminders
-
     fun toggleReminder(task: Task) {
         if (_enabledReminders.value.contains(task.id)) {
             cancelReminder(task.id)
@@ -68,56 +73,85 @@ class TasksViewModel(
     }
 
     private fun scheduleReminder(task: Task) {
+        // ensure single alarm by cancelling any existing first
+        cancelReminder(task.id)
+
         val now = java.time.LocalDateTime.now()
         var trigger = java.time.LocalDateTime.of(java.time.LocalDate.now(), task.time)
-        // If time is in the past (or basically now), push to tomorrow to avoid instant fire.
         if (!trigger.isAfter(now.plusSeconds(5))) {
             trigger = trigger.plusDays(1)
         }
-        val delayMillis = java.time.Duration.between(now, trigger).toMillis()
+        val triggerAtMillis = trigger
+            .atZone(java.time.ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
 
-        val data = androidx.work.workDataOf(
-            TaskReminderWorker.KEY_TASK_ID to task.id,
-            TaskReminderWorker.KEY_TEXT to task.text,
-            TaskReminderWorker.KEY_TIME to task.time.toString()
+        val ctx = AppGraph.appContext
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(ctx, TaskReminderReceiver::class.java).apply {
+            putExtra(TaskReminderReceiver.KEY_TASK_ID, task.id)
+            putExtra(TaskReminderReceiver.KEY_TEXT, task.text)
+            putExtra(TaskReminderReceiver.KEY_TIME, task.time.toString())
+        }
+        val pi = PendingIntent.getBroadcast(
+            ctx,
+            task.id.toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val req = androidx.work.OneTimeWorkRequestBuilder<TaskReminderWorker>()
-            .setInitialDelay(delayMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
-            .setInputData(data)
-            .addTag(reminderTag(task.id))
-            .build()
 
-        androidx.work.WorkManager.getInstance(AppGraph.appContext)
-            .enqueueUniqueWork(
-                uniqueWorkName(task.id),
-                androidx.work.ExistingWorkPolicy.REPLACE,
-                req
-            )
+        // API 31+: check exact-alarm capability; fall back to inexact if needed
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            var canExact = false
+            try {
+                canExact = am.canScheduleExactAlarms()
+                if (canExact) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                } else {
+                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                }
+            } catch (se: SecurityException) {
+                // As a safety net, avoid crashing and still schedule an inexact alarm
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+            }
+        } else {
+            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+        }
+
         _enabledReminders.value = _enabledReminders.value + task.id
     }
 
     private fun cancelReminder(id: Long) {
-        androidx.work.WorkManager.getInstance(AppGraph.appContext)
-            .cancelUniqueWork(uniqueWorkName(id))
+        val ctx = AppGraph.appContext
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val pi = PendingIntent.getBroadcast(
+            ctx,
+            id.toInt(),
+            Intent(ctx, TaskReminderReceiver::class.java),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        if (pi != null) {
+            am.cancel(pi)
+            pi.cancel()
+        }
         _enabledReminders.value = _enabledReminders.value - id
     }
 
-    private suspend fun refreshEnabledFromWorkManager(ids: List<Long>) {
-        val wm = WorkManager.getInstance(AppGraph.appContext)
-        val enabled = mutableSetOf<Long>()
-        withContext(Dispatchers.IO) {
-            for (id in ids) {
-                val infos = wm.getWorkInfosForUniqueWork(uniqueWorkName(id)).get() // blocking, but on IO
-                if (infos.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }) {
-                    enabled += id
-                }
+    private fun refreshEnabledFromAlarms(ids: List<Long>) {
+        val ctx = AppGraph.appContext
+        val enabled = buildSet {
+            ids.forEach { id ->
+                val pi = PendingIntent.getBroadcast(
+                    ctx,
+                    id.toInt(),
+                    Intent(ctx, TaskReminderReceiver::class.java),
+                    PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+                )
+                if (pi != null) add(id)
             }
         }
         _enabledReminders.value = enabled
     }
-
-    private fun uniqueWorkName(id: Long) = "task_reminder_$id"
-    private fun reminderTag(id: Long) = "task_id:$id"
 
     companion object {
         fun factory() = object : ViewModelProvider.Factory {
@@ -145,59 +179,51 @@ class TasksViewModel(
         editJobs.values.forEach { it.cancel() }
         super.onCleared()
     }
+}
 
-    // -------- Notification Worker ----------
-    class TaskReminderWorker(
-        appContext: android.content.Context,
-        params: androidx.work.WorkerParameters
-    ) : androidx.work.CoroutineWorker(appContext, params) {
-        override suspend fun doWork(): Result {
-            val id = inputData.getLong(KEY_TASK_ID, -1L)
-            val text = inputData.getString(KEY_TEXT) ?: "Task reminder"
-            val time = inputData.getString(KEY_TIME) ?: ""
+class TaskReminderReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val id = intent.getLongExtra(KEY_TASK_ID, -1L)
+        val text = intent.getStringExtra(KEY_TEXT) ?: "Task reminder"
+        val time = intent.getStringExtra(KEY_TIME) ?: ""
 
-            // Create notification channel (id must be stable)
-            val channelId = "task_reminders"
-            val nm = applicationContext.getSystemService(android.content.Context.NOTIFICATION_SERVICE)
-                    as android.app.NotificationManager
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                val ch = android.app.NotificationChannel(
-                    channelId,
-                    "Task reminders",
-                    android.app.NotificationManager.IMPORTANCE_DEFAULT
-                ).apply { description = "Notifications for scheduled tasks" }
-                nm.createNotificationChannel(ch)
+        val channelId = "task_reminders"
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val ch = android.app.NotificationChannel(
+                channelId, "Task reminders",
+                android.app.NotificationManager.IMPORTANCE_DEFAULT
+            ).apply { description = "Notifications for scheduled tasks" }
+            nm.createNotificationChannel(ch)
+        }
+
+        val contentIntent = context.packageManager
+            .getLaunchIntentForPackage(context.packageName)
+            ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP) }
+            ?.let { launch ->
+                androidx.core.app.TaskStackBuilder.create(context)
+                    .addNextIntentWithParentStack(launch)
+                    .getPendingIntent(
+                        id.toInt(),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
             }
 
-            val notif = androidx.core.app.NotificationCompat.Builder(applicationContext, channelId)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("Reminder ${if (time.isNotEmpty()) "($time)" else ""}")
-                .setContentText(text.ifBlank { "Don’t forget your task." })
-                .setAutoCancel(true)
-                .setContentIntent(
-                    applicationContext.packageManager
-                        .getLaunchIntentForPackage(applicationContext.packageName)
-                        ?.let { launch ->
-                            launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                            androidx.core.app.TaskStackBuilder.create(applicationContext)
-                                .addNextIntentWithParentStack(launch)
-                                .getPendingIntent(
-                                    id.toInt(),
-                                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-                                )
-                        }
-                )
-                .build()
+        val notif = androidx.core.app.NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Reminder ${if (time.isNotEmpty()) "($time)" else ""}")
+            .setContentText(text.ifBlank { "Don’t forget your task." })
+            .setAutoCancel(true)
+            .setContentIntent(contentIntent)
+            .build()
 
-            nm.notify(id.toInt(), notif)
-            return Result.success()
-        }
+        nm.notify(id.toInt(), notif)
+    }
 
-        companion object {
-            const val KEY_TASK_ID = "task_id"
-            const val KEY_TEXT = "task_text"
-            const val KEY_TIME = "task_time"
-        }
+    companion object {
+        const val KEY_TASK_ID = "task_id"
+        const val KEY_TEXT = "task_text"
+        const val KEY_TIME = "task_time"
     }
 }
 
