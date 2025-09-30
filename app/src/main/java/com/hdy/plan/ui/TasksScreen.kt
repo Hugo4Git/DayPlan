@@ -46,6 +46,8 @@ fun TasksScreen(
     vm: TasksViewModel = viewModel(factory = TasksViewModel.Companion.factory())
 ) {
     val list by vm.items.collectAsStateWithLifecycle()
+    var pickerForId by remember { mutableStateOf<Long?>(null) }
+    var initialTime by remember { mutableStateOf(LocalTime.now()) }
 
     Scaffold(
         floatingActionButton = {
@@ -90,9 +92,8 @@ fun TasksScreen(
 
                                     AssistChip(
                                         onClick = {
-                                            val newTime = LocalTime.now()
-                                            vm.updateTime(item.id, newTime)
-                                            // TODO: Open your time picker and set newTime accordingly
+                                            pickerForId = item.id
+                                            initialTime = item.time
                                         },
                                         label = {
                                             Text(
@@ -154,6 +155,16 @@ fun TasksScreen(
                                     }
                                 }
                             }
+                    }
+                    if (pickerForId != null) {
+                        TimePicker(
+                            initial = initialTime,
+                            onPicked = { picked ->
+                                vm.updateTime(pickerForId!!, picked)
+                                pickerForId = null
+                            },
+                            onDismiss = { pickerForId = null }
+                        )
                     }
                     Spacer(Modifier.height(56.dp))
                 }

@@ -36,7 +36,7 @@ class TasksViewModel(
         }
     }
 
-    fun onEdit(id: Long, text: String, delayMs: Long = 250) {
+    fun onEdit(id: Long, text: String, delayMs: Long = 500) {
         editJobs[id]?.cancel()
         editJobs[id] = viewModelScope.launch {
             delay(delayMs)
