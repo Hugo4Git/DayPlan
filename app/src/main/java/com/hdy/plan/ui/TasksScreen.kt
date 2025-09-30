@@ -10,16 +10,15 @@ import androidx.core.content.ContextCompat
 import com.hdy.plan.domain.Task
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -167,6 +167,9 @@ fun TasksScreen(
                                     TextField(
                                         value = localText,
                                         onValueChange = { localText = it; vm.onEdit(item.id, it) },
+                                        keyboardOptions = KeyboardOptions.Default.copy(
+                                            capitalization = KeyboardCapitalization.Sentences
+                                        ),
                                         placeholder = {
                                             Text(
                                                 "Write something…",
