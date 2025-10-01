@@ -16,7 +16,16 @@ With a minimalist interface and calm colors, the app makes scheduling tasks feel
 ## 🛠️ Tech Stack
 - [Kotlin](https://kotlinlang.org/) – modern programming language for Android  
 - [Jetpack Compose](https://developer.android.com/jetpack/compose) – declarative UI toolkit  
-- [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) – background task scheduling  
+- [AlarmManager](https://developer.android.com/reference/android/app/AlarmManager) – schedule exact alarms  
 - [Material 3](https://m3.material.io/) – design system and components  
 
+---
 
+## 📸 Screenshots
+
+<p float="left">
+  <img src="screenshots/ss1.jpg" width="100" />
+  <img src="screenshots/ss2.jpg" width="100" />
+  <img src="screenshots/ss3.jpg" width="100" />
+  <img src="screenshots/ss4.jpg" width="100" />
+</p>
