@@ -26,6 +26,6 @@ With a minimalist interface and calm colors, the app makes scheduling tasks feel
 <p float="left">
   <img src="screenshots/ss1.jpg" width="200" />
   <img src="screenshots/ss2.jpg" width="200" />
-  <img src="screenshots/ss4.jpg" width="200" />
   <img src="screenshots/ss3.jpg" width="200" />
+  <img src="screenshots/ss4.jpg" width="200" />
 </p>
