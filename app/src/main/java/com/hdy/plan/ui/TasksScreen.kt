@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.hdy.plan.domain.Task
+import androidx.core.net.toUri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -44,6 +45,9 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.app.AlarmManager
+import android.content.Intent
+import android.provider.Settings
 
 @Composable
 fun TasksScreen(
@@ -56,11 +60,43 @@ fun TasksScreen(
     var initialTime by remember { mutableStateOf(LocalTime.now()) }
     val context = LocalContext.current
     var pendingToggle by remember { mutableStateOf<Task?>(null) }
+
+    val requestExactAlarmPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        pendingToggle?.let { task ->
+            val am = ContextCompat.getSystemService(context, AlarmManager::class.java)
+            val exactGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                    am?.canScheduleExactAlarms() == true
+            if (exactGranted) {
+                vm.toggleReminder(task)
+            }
+            pendingToggle = null
+        }
+    }
+
     val requestNotifPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         pendingToggle?.let { task ->
-            if (granted) vm.toggleReminder(task)
+            if (!granted) {
+                // User denied notifications
+                pendingToggle = null
+                return@let
+            }
+            // Notifications granted
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val am = ContextCompat.getSystemService(context, AlarmManager::class.java)
+                val canExact = am?.canScheduleExactAlarms() == true
+                if (!canExact) {
+                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                        data = "package:${context.packageName}".toUri()
+                    }
+                    requestExactAlarmPermission.launch(intent)
+                    return@let
+                }
+            }
+            vm.toggleReminder(task)
             pendingToggle = null
         }
     }
@@ -135,19 +171,32 @@ fun TasksScreen(
                                         IconButton(
                                             onClick = {
                                                 haptics.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                                                pendingToggle = item
+
                                                 if (Build.VERSION.SDK_INT >= 33) {
-                                                    val granted = ContextCompat.checkSelfPermission(
+                                                    val notifGranted = ContextCompat.checkSelfPermission(
                                                         context, Manifest.permission.POST_NOTIFICATIONS
                                                     ) == PackageManager.PERMISSION_GRANTED
-                                                    if (!granted) {
-                                                        pendingToggle = item
+                                                    if (!notifGranted) {
                                                         requestNotifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                                    } else {
-                                                        vm.toggleReminder(item)
+                                                        return@IconButton
                                                     }
-                                                } else {
-                                                    vm.toggleReminder(item)
                                                 }
+
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                                    val am = ContextCompat.getSystemService(context, AlarmManager::class.java)
+                                                    val canExact = am?.canScheduleExactAlarms() == true
+                                                    if (!canExact) {
+                                                        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                                            data = "package:${context.packageName}".toUri()
+                                                        }
+                                                        requestExactAlarmPermission.launch(intent)
+                                                        return@IconButton
+                                                    }
+                                                }
+
+                                                vm.toggleReminder(item)
+                                                pendingToggle = null
                                             }
                                         ) {
                                             Icon(
