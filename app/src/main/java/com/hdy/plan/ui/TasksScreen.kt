@@ -48,6 +48,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import android.app.AlarmManager
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 
 @Composable
 fun TasksScreen(
@@ -102,6 +105,7 @@ fun TasksScreen(
     }
 
     val haptics = LocalHapticFeedback.current
+    val focusManager = LocalFocusManager.current
     Scaffold(
         floatingActionButton = {
             FabWithLongClick(
@@ -122,7 +126,12 @@ fun TasksScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp),
+                    .padding(horizontal = 24.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = {
+                            focusManager.clearFocus()
+                        })
+                    },
                 verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
