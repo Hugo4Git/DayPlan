@@ -20,6 +20,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import com.hdy.plan.R
 
 class TasksViewModel(
     private val repo: TasksRepository
@@ -210,9 +211,8 @@ class TaskReminderReceiver : android.content.BroadcastReceiver() {
             }
 
         val notif = androidx.core.app.NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Reminder ${if (time.isNotEmpty()) "($time)" else ""}")
-            .setContentText(text.ifBlank { "Don’t forget your task." })
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(text.ifBlank { "Don’t forget your task." })
             .setAutoCancel(true)
             .setContentIntent(contentIntent)
             .build()
